@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Discord Image & Video Compressor</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    body {
+      font-family: sans-serif;
+      max-width: 600px;
+      margin: auto;
+      padding: 2rem;
+      color: #ffffff;              /* make all normal text white */
+    }
+    h1 {
+      text-align: center;
+      color: #ffffff;
+    }
+    .drop-zone {
+      border: 2px dashed #ccc;
+      padding: 2rem;
+      text-align: center;
+      cursor: pointer;
+      margin-bottom: 1rem;
+      color: #ffffff;             /* drop zone prompt text white */
+    }
+    .drop-zone:hover {
+      border-color: #888;
+    }
+    #fileInput { display: none; }
+    #progress {
+      margin-top: 1rem;
+      font-style: italic;
+      color: #ffffff;             /* progress text white */
+    }
+    #downloadLink a {
+      display: block;
+      margin-top: 0.5rem;
+      color: #ffffff;             /* download links white */
+      text-decoration: underline;
+      text-decoration-color: #ffffff;
+    }
+
+    /* Progress bar */
+    #progressContainer {
+      width: 100%;
+      background: #eee;
+      height: 12px;
+      margin-bottom: 1rem;
+      display: none;
+    }
+    #progressBar {
+      width: 0%;
+      height: 100%;
+      background: #7289da;
+      transition: width 0.1s ease;
+    }
+
+    /* Page background */
+    html {
+      background-color: #2c2f33;
+    }
+
+    a {
+        text-align: center;
+    }
+
+  </style>
+</head>
+<body>
+  <h1>Discord Image & Video Compressor</h1>
+  <div class="drop-zone" id="dropZone">Click or drag files here</div>
+  <input type="file" id="fileInput" accept="image/*,video/*" multiple>
+  <div id="progressContainer"><div id="progressBar"></div></div>
+  <div id="progress"></div>
+  <div id="downloadLink"></div>
+
+<a href="whyus.html" style="color:#FFFFFF!important;text-decoration:underline!important;text-decoration-color:#FFFFFF!important;"><p>Why Us?</p></a>
+
+  <script>
+    const MAX_SIZE = 8 * 1024 * 1024; // 8 MiB
+    const dropZone = document.getElementById('dropZone');
+    const fileInput = document.getElementById('fileInput');
+    const progress = document.getElementById('progress');
+    const downloadLink = document.getElementById('downloadLink');
+    const progressContainer = document.getElementById('progressContainer');
+    const progressBar = document.getElementById('progressBar');
+
+    dropZone.addEventListener('click', () => fileInput.click());
+    dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.style.borderColor = '#666'; });
+    dropZone.addEventListener('dragleave', e => { e.preventDefault(); dropZone.style.borderColor = '#ccc'; });
+    dropZone.addEventListener('drop', e => { e.preventDefault(); dropZone.style.borderColor = '#ccc'; handleFiles(e.dataTransfer.files); });
+    fileInput.addEventListener('change', () => handleFiles(fileInput.files));
+
+    async function handleFiles(files) {
+      for (const file of files) {
+        progress.textContent = `Processing ${file.name}...`;
+        progressContainer.style.display = 'none';
+        progressBar.style.width = '0%';
+
+        let compressed;
+        if (file.type.startsWith('image/')) {
+          compressed = await compressImage(file);
+        } else if (file.type.startsWith('video/')) {
+          compressed = await compressVideo(file);
+        } else {
+          progress.textContent = `Unsupported file type: ${file.type}`;
+          continue;
+        }
+
+        progressContainer.style.display = 'none';
+        progress.textContent = `Done: ${file.name}`;
+
+        const blob = new Blob([compressed], { type: file.type.startsWith('image/') ? 'image/jpeg' : 'video/webm' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = getDownloadName(file);
+        a.textContent = `Download ${a.download} (${formatBytes(blob.size)})`;
+        downloadLink.appendChild(a);
+      }
+    }
+
+    function getDownloadName(file) {
+      const ext = file.type.startsWith('image/') ? '.jpg' : '.webm';
+      const name = file.name.replace(/\.[^/.]+$/, '');
+      return `${name}-compressed${ext}`;
+    }
+
+    function formatBytes(bytes) {
+      const sizes = ['Bytes','KB','MB','GB','TB'];
+      if (bytes === 0) return '0 Byte';
+      const i = Math.floor(Math.log(bytes) / Math.log(1024));
+      return Math.round(bytes / Math.pow(1024, i) * 100) / 100 + ' ' + sizes[i];
+    }
+
+    async function compressImage(file) {
+      return new Promise((resolve) => {
+        const img = new Image();
+        const reader = new FileReader();
+        reader.onload = () => { img.src = reader.result; };
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          canvas.width = img.width;
+          canvas.height = img.height;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0);
+          let quality = 0.95;
+          function attempt() {
+            canvas.toBlob(async (blob) => {
+              if (blob.size <= MAX_SIZE || quality < 0.2) {
+                const arrayBuffer = await blob.arrayBuffer();
+                resolve(new Uint8Array(arrayBuffer));
+              } else {
+                quality -= 0.05;
+                attempt();
+              }
+            }, 'image/jpeg', quality);
+          }
+          attempt();
+        };
+        reader.readAsDataURL(file);
+      });
+    }
+
+    async function compressVideo(file) {
+      return new Promise((resolve, reject) => {
+        const url = URL.createObjectURL(file);
+        const video = document.createElement('video');
+        video.src = url;
+        video.muted = true;
+        video.playsInline = true;
+        video.onloadedmetadata = () => {
+          const duration = video.duration;
+          const targetBitsPerSecond = Math.floor((MAX_SIZE * 8) / duration);
+
+          const width = video.videoWidth;
+          const height = video.videoHeight;
+          const canvas = document.createElement('canvas');
+          canvas.width = Math.floor(width / 2);
+          canvas.height = Math.floor(height / 2);
+          const ctx = canvas.getContext('2d');
+
+          const videoStream = canvas.captureStream(30);
+          const originalStream = video.captureStream();
+          originalStream.getAudioTracks().forEach(track => videoStream.addTrack(track));
+
+          const options = {
+            mimeType: 'video/webm; codecs=vp8,opus',
+            bitsPerSecond: targetBitsPerSecond
+          };
+          let recorder;
+          try {
+            recorder = new MediaRecorder(videoStream, options);
+          } catch (e) {
+            reject('MediaRecorder not supported');
+            return;
+          }
+
+          const chunks = [];
+          recorder.ondataavailable = e => chunks.push(e.data);
+          recorder.onstop = async () => {
+            const blob = new Blob(chunks, { type: 'video/webm' });
+            const arrayBuffer = await blob.arrayBuffer();
+            resolve(new Uint8Array(arrayBuffer));
+          };
+
+          const interval = setInterval(() => {
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+          }, 1000 / 30);
+
+          video.play();
+          video.ontimeupdate = () => {
+            progressContainer.style.display = 'block';
+            const pct = (video.currentTime / duration) * 100;
+            progressBar.style.width = `${pct.toFixed(2)}%`;
+            progress.textContent = `Progress: ${pct.toFixed(1)}%`;
+          };
+
+          recorder.start();
+          video.onended = () => {
+            clearInterval(interval);
+            recorder.stop();
+          };
+        };
+        video.onerror = () => reject('Video load error');
+      });
+    }
+  </script>
+</body>
+</html>

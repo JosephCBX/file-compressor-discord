@@ -1,2 +1,2 @@
-# file-compressor-discord
-Compresses Images and Videos for Discords 8MB File Limit
+# file-compressor-for-discord
+Shrinks Images and Videos to 8MB for discords file limit
